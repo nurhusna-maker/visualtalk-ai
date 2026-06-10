@@ -1,20 +1,15 @@
-# VisualTalk AI
+# VisualTalk AI Lite
 
-VisualTalk AI is a simple Streamlit prototype for visual description speaking practice.
+This is the free version of VisualTalk AI.
 
-## Student Flow
-1. Upload a visual.
-2. Record a speaking response.
-3. Receive AI-generated feedback.
+No OpenAI API key is needed.
 
-## Files
-- app.py
-- requirements.txt
+## Features
+- Upload visual
+- Browser speech recognition
+- Automatic transcript
+- Rule-based speaking feedback
+- Speaking score out of 50
 
-## Deployment
-Upload these files to GitHub, then deploy using Streamlit Community Cloud.
-
-## Streamlit Secrets
-Add your OpenAI API key in Streamlit secrets:
-
-OPENAI_API_KEY = "your_api_key_here"
+## Important
+Works best in Google Chrome because it uses the browser's built-in Web Speech API.
