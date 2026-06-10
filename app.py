@@ -1,269 +1,487 @@
-import base64
-import io
-import tempfile
-import time
-
 import streamlit as st
-from openai import OpenAI
-from streamlit_mic_recorder import mic_recorder
+import streamlit.components.v1 as components
 
+st.set_page_config(page_title="VisualTalk Lite Plus", page_icon="🎙️", layout="wide")
 
-st.set_page_config(
-    page_title="VisualTalk AI V2",
-    page_icon="🎙️",
-    layout="wide"
-)
-
-st.markdown("""
+components.html(
+"""
+<!DOCTYPE html>
+<html>
+<head>
 <style>
-.main-title {
-    font-size: 42px;
-    font-weight: 800;
-    margin-bottom: 0px;
+body {
+  font-family: Arial, sans-serif;
+  background: #ffffff;
+  color: #222;
+}
+.container {
+  max-width: 1100px;
+  margin: auto;
+  padding: 20px;
+}
+h1 {
+  font-size: 44px;
+  margin-bottom: 5px;
 }
 .subtitle {
-    font-size: 18px;
-    color: #666666;
-    margin-bottom: 25px;
+  color: #666;
+  font-size: 18px;
+  margin-bottom: 25px;
 }
-.box {
-    border: 1px solid #dddddd;
-    border-radius: 14px;
-    padding: 18px;
-    background-color: #fafafa;
-    margin-bottom: 18px;
+.card {
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  padding: 22px;
+  margin-bottom: 20px;
+  background: #fafafa;
 }
-.small-note {
-    color: #666666;
-    font-size: 14px;
+button {
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: 1px solid #888;
+  background: #f4f4f4;
+  cursor: pointer;
+  font-size: 16px;
+  margin: 5px;
+}
+button:hover {
+  background: #e8e8e8;
+}
+textarea {
+  width: 100%;
+  min-height: 180px;
+  font-size: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #aaa;
+}
+.feedback {
+  background: #eef7ee;
+  border-left: 6px solid #4CAF50;
+  padding: 16px;
+  border-radius: 10px;
+  margin-top: 15px;
+}
+.warning {
+  background: #fff3cd;
+  border-left: 6px solid #ffc107;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+}
+.blue {
+  background: #eef5ff;
+  border-left: 6px solid #3f7ddd;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+}
+img {
+  max-width: 100%;
+  border-radius: 12px;
+  margin-top: 10px;
+}
+.score {
+  font-size: 22px;
+  font-weight: bold;
+}
+.small {
+  color: #666;
+  font-size: 14px;
+}
+.timer {
+  font-size: 34px;
+  font-weight: bold;
+  color: #333;
+  margin: 10px 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 800px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
-""", unsafe_allow_html=True)
+</head>
 
-st.markdown("<div class='main-title'>🎙️ VisualTalk AI V2</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Spontaneous visual description practice with AI feedback</div>", unsafe_allow_html=True)
+<body>
+<div class="container">
+  <h1>🎙️ VisualTalk Lite Plus</h1>
+  <div class="subtitle">Free spontaneous visual description practice tool</div>
 
-try:
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-except Exception:
-    st.error("Please add your OpenAI API key in .streamlit/secrets.toml")
-    st.stop()
+  <div class="warning">
+    This version is 100% free. It uses browser speech recognition and rule-based feedback.
+    It does not use OpenAI API, so it cannot truly analyse the image. Students must describe what they see clearly.
+  </div>
 
+  <div class="grid">
+    <div class="card">
+      <h2>1. Upload Visual</h2>
+      <input type="file" id="imageInput" accept="image/*">
+      <br>
+      <img id="preview">
+    </div>
 
-def encode_image(uploaded_image):
-    image_bytes = uploaded_image.getvalue()
-    return base64.b64encode(image_bytes).decode("utf-8")
+    <div class="card">
+      <h2>2. Speaking Timer</h2>
+      <p>Recommended: 1 minute preparation + 2 minutes speaking.</p>
+      <button onclick="startPrepTimer(60)">⏱ 1-Min Prep</button>
+      <button onclick="startSpeakingTimer(120)">🎙 2-Min Speaking</button>
+      <button onclick="resetTimer()">Reset Timer</button>
+      <div class="timer" id="timerDisplay">Ready</div>
+      <p class="small">Use the timer to encourage spontaneous speaking without writing a script.</p>
+    </div>
+  </div>
 
+  <div class="card">
+    <h2>3. Record / Dictate Speech</h2>
+    <p>Click <b>Start Speaking</b>, describe the visual, then click <b>Stop</b>.</p>
+    <button onclick="startRecognition()">🎤 Start Speaking</button>
+    <button onclick="stopRecognition()">⏹ Stop</button>
+    <button onclick="clearText()">🧹 Clear</button>
+    <p class="small" id="status">Status: Ready</p>
 
-def transcribe_audio(audio_bytes):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-        temp_audio.write(audio_bytes)
-        temp_audio_path = temp_audio.name
+    <textarea id="transcript" placeholder="Your speech transcript will appear here. You may also type or paste your answer."></textarea>
+  </div>
 
-    with open(temp_audio_path, "rb") as audio_file:
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file
-        )
+  <div class="card">
+    <h2>4. Get Feedback</h2>
+    <button onclick="analyseSpeaking()">Analyse My Speaking</button>
+    <div id="feedback"></div>
+  </div>
+</div>
 
-    return transcript.text
+<script>
+let recognition;
+let finalTranscript = "";
+let timerInterval;
 
+document.getElementById("imageInput").addEventListener("change", function(event) {
+  const file = event.target.files[0];
+  if (file) {
+    document.getElementById("preview").src = URL.createObjectURL(file);
+  }
+});
 
-def analyse_visual_and_speech(image_base64, transcript_text, target_level, speaking_time):
-    prompt = f"""
-You are VisualTalk AI, an English speaking coach for Malaysian diploma students.
+function startPrepTimer(seconds) {
+  startTimer(seconds, "Preparation");
+}
 
-The student completed a spontaneous visual description task.
+function startSpeakingTimer(seconds) {
+  startTimer(seconds, "Speaking");
+}
 
-Target student level: {target_level}
-Expected speaking time: {speaking_time}
+function startTimer(seconds, label) {
+  clearInterval(timerInterval);
+  let remaining = seconds;
+  const display = document.getElementById("timerDisplay");
 
-Student transcript:
-{transcript_text}
+  timerInterval = setInterval(function() {
+    let min = Math.floor(remaining / 60);
+    let sec = remaining % 60;
+    display.innerText = label + ": " + min + ":" + (sec < 10 ? "0" : "") + sec;
 
-Analyse the uploaded visual and compare it with the student's speech.
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      display.innerText = label + " time is over";
+    }
+    remaining--;
+  }, 1000);
+}
 
-IMPORTANT:
-- Do not give generic feedback.
-- Refer to actual visible details in the image.
-- If the student misses important image details, name those details clearly.
-- Keep the language student-friendly.
-- Do not be too harsh.
-- Use Malaysian diploma speaking assessment style.
+function resetTimer() {
+  clearInterval(timerInterval);
+  document.getElementById("timerDisplay").innerText = "Ready";
+}
 
-Give the feedback using this exact format:
+function startRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-## 1. Visual Summary
-Briefly identify the setting, people, objects, actions, and atmosphere in the picture.
+  if (!SpeechRecognition) {
+    document.getElementById("status").innerText = "Status: Speech recognition is not supported in this browser. Please use Google Chrome.";
+    return;
+  }
 
-## 2. What You Did Well
-Give 3 specific strengths based on the transcript.
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
 
-## 3. Important Details You Missed
-Give 3 to 5 specific visual details that the student could add.
+  recognition.onstart = function() {
+    document.getElementById("status").innerText = "Status: Listening...";
+  };
 
-## 4. Vocabulary Upgrade
-Give 10 useful words or phrases related to the visual.
-Use this format:
-- simple word → better word/phrase
+  recognition.onresult = function(event) {
+    let interimTranscript = "";
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + " ";
+      } else {
+        interimTranscript += event.results[i][0].transcript;
+      }
+    }
+    document.getElementById("transcript").value = finalTranscript + interimTranscript;
+  };
 
-## 5. Grammar and Sentence Improvement
-Select up to 5 sentences or phrases from the student's transcript and improve them.
-Use this format:
-- Original:
-- Improved:
+  recognition.onerror = function(event) {
+    let message = event.error;
+    if (event.error === "not-allowed") {
+      message = "Microphone permission was denied. Please allow microphone access in Chrome settings.";
+    }
+    document.getElementById("status").innerText = "Status: Error - " + message;
+  };
 
-If the transcript is too short, give general sentence patterns instead.
+  recognition.onend = function() {
+    document.getElementById("status").innerText = "Status: Stopped";
+  };
 
-## 6. Organisation Feedback
-Comment on whether the student described:
-- place
-- people
-- objects
-- actions
-- atmosphere
-- opinion
+  recognition.start();
+}
 
-## 7. Suggested Improved Answer
-Write an improved spontaneous answer suitable for the student's level.
-It must be specific to the image.
-Length:
-- Band 3: 80-100 words
-- Band 4: 120-150 words
-- Band 5: 170-220 words
+function stopRecognition() {
+  if (recognition) {
+    recognition.stop();
+  }
+}
 
-## 8. Estimated Speaking Band
-Give:
-- Content /10
-- Organisation /10
-- Vocabulary /10
-- Grammar /10
-- Fluency /10
-- Total /50
-- Estimated band: Band 3, Band 4, or Band 5
+function clearText() {
+  finalTranscript = "";
+  document.getElementById("transcript").value = "";
+  document.getElementById("feedback").innerHTML = "";
+}
 
-## 9. Next Practice Target
-Give one clear target for the next practice.
-"""
+function countWords(text) {
+  return text.trim().split(/\\s+/).filter(Boolean).length;
+}
 
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": prompt},
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{image_base64}",
-                    },
-                ],
-            }
-        ],
-    )
+function countSentences(text) {
+  const matches = text.match(/[.!?]+/g);
+  return matches ? matches.length : Math.max(1, Math.round(countWords(text)/14));
+}
 
-    return response.output_text
+function containsAny(text, words) {
+  const lower = text.toLowerCase();
+  return words.some(w => lower.includes(w));
+}
 
+function vocabularyScore(text) {
+  const words = text.toLowerCase().match(/\\b[a-z]+\\b/g) || [];
+  const unique = new Set(words);
+  if (words.length === 0) return 0;
+  const ratio = unique.size / words.length;
+  return Math.min(10, Math.round(ratio * 18));
+}
 
-with st.sidebar:
-    st.header("Settings")
-    target_level = st.selectbox(
-        "Target level",
-        ["Band 3", "Band 4", "Band 5"],
-        index=1
-    )
+function organisationScore(text) {
+  const markers = [
+    "first", "second", "next", "then", "after that", "finally", "overall",
+    "in conclusion", "on the left", "on the right", "in the background",
+    "in the foreground", "at the centre", "near", "beside", "behind",
+    "in front of", "while", "whereas", "however"
+  ];
+  let score = 3;
+  markers.forEach(m => {
+    if (text.toLowerCase().includes(m)) score += 1;
+  });
+  return Math.min(10, score);
+}
 
-    prep_time = st.selectbox(
-        "Preparation time",
-        ["30 seconds", "1 minute", "2 minutes"],
-        index=1
-    )
+function contentScore(text, wordCount) {
+  let score = 0;
 
-    speaking_time = st.selectbox(
-        "Speaking time",
-        ["1 minute", "2 minutes", "3 minutes"],
-        index=1
-    )
+  if (wordCount >= 120) score += 4;
+  else if (wordCount >= 90) score += 3;
+  else if (wordCount >= 60) score += 2;
+  else if (wordCount >= 30) score += 1;
 
-    st.markdown("---")
-    st.caption("Recommended for LCC002: 1 minute preparation + 2 minutes speaking.")
+  if (containsAny(text, ["picture", "visual", "image", "scene", "photo"])) score += 1;
+  if (containsAny(text, ["people", "person", "man", "woman", "student", "passenger", "worker", "children", "family"])) score += 1;
+  if (containsAny(text, ["doing", "walking", "waiting", "talking", "sitting", "standing", "carrying", "looking", "working", "helping"])) score += 1;
+  if (containsAny(text, ["background", "foreground", "left", "right", "centre", "behind", "beside", "near"])) score += 1;
+  if (containsAny(text, ["busy", "calm", "crowded", "organised", "clean", "noisy", "peaceful", "serious", "happy"])) score += 1;
+  if (containsAny(text, ["i think", "in my opinion", "this shows", "this reminds me", "overall"])) score += 1;
 
+  return Math.min(10, score);
+}
 
-col1, col2 = st.columns([1, 1])
+function fluencyScore(text, wordCount) {
+  let score = wordCount >= 100 ? 9 : wordCount >= 70 ? 7 : wordCount >= 40 ? 5 : wordCount > 0 ? 3 : 0;
+  const fillers = ["um", "uh", "erm", "like like", "you know"];
+  fillers.forEach(f => {
+    if (text.toLowerCase().includes(f)) score -= 1;
+  });
+  return Math.max(1, Math.min(10, score));
+}
 
-with col1:
-    st.markdown("<div class='box'>", unsafe_allow_html=True)
-    st.subheader("1. Upload Visual")
-    image = st.file_uploader(
-        "Upload the visual for speaking practice",
-        type=["jpg", "jpeg", "png"]
-    )
+function grammarScore(text) {
+  let score = 8;
+  const lower = text.toLowerCase();
+  const issues = ["he are", "she are", "they is", "people is", "i is", "many person", "much people", "many luggage", "many informations"];
+  issues.forEach(i => {
+    if (lower.includes(i)) score -= 1;
+  });
+  if (!/[.!?]/.test(text) && countWords(text) > 50) score -= 1;
+  return Math.max(3, score);
+}
 
-    if image:
-        st.image(image, caption="Student visual", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+function getBand(total) {
+  if (total >= 41) return "Band 5";
+  if (total >= 31) return "Band 4";
+  if (total >= 21) return "Band 3";
+  return "Band 2";
+}
 
-with col2:
-    st.markdown("<div class='box'>", unsafe_allow_html=True)
-    st.subheader("2. Spontaneous Speaking Task")
+function buildStrengths(text, words, organisation, vocab) {
+  let strengths = [];
 
-    st.write("Instructions for students:")
-    st.info(
-        "Look at the visual. Prepare briefly. Then click **Start Speaking** and describe the picture spontaneously. "
-        "Do not read from a script."
-    )
+  if (words >= 90) strengths.push("You gave a response with sufficient length.");
+  if (containsAny(text, ["people", "person", "man", "woman", "student", "passenger", "worker", "children"])) strengths.push("You described the people in the visual.");
+  if (containsAny(text, ["walking", "waiting", "talking", "sitting", "standing", "carrying", "working", "helping"])) strengths.push("You mentioned actions, which makes your description clearer.");
+  if (containsAny(text, ["background", "foreground", "left", "right", "centre", "near", "behind"])) strengths.push("You used spatial description to organise your answer.");
+  if (containsAny(text, ["i think", "in my opinion", "overall", "this shows", "this reminds me"])) strengths.push("You included your opinion or interpretation.");
+  if (vocab >= 7) strengths.push("You used a reasonable range of vocabulary.");
 
-    if image:
-        if st.button("Start Preparation Timer"):
-            seconds = {"30 seconds": 30, "1 minute": 60, "2 minutes": 120}[prep_time]
-            timer_placeholder = st.empty()
-            for remaining in range(seconds, 0, -1):
-                timer_placeholder.warning(f"Preparation time left: {remaining} seconds")
-                time.sleep(1)
-            timer_placeholder.success("Preparation time is over. Start speaking now.")
+  if (strengths.length === 0) strengths.push("You attempted to describe the visual. This is a good starting point.");
 
-        audio = mic_recorder(
-            start_prompt="🎙️ Start Speaking",
-            stop_prompt="⏹️ Stop Recording",
-            just_once=True,
-            use_container_width=True,
-            key="visualtalk_recorder"
-        )
+  return strengths;
+}
 
-        st.markdown(
-            "<div class='small-note'>If recording is blocked, check browser microphone permission and use Google Chrome.</div>",
-            unsafe_allow_html=True
-        )
-    else:
-        audio = None
-        st.warning("Please upload a visual first.")
-    st.markdown("</div>", unsafe_allow_html=True)
+function buildImprovements(text, words, avgSentence) {
+  let improve = [];
 
+  if (words < 60) improve.push("Try to speak longer. Add details about the place, people, objects, actions, and atmosphere.");
+  if (!containsAny(text, ["background", "foreground", "left", "right", "centre", "near", "behind"])) improve.push("Use location phrases such as 'in the foreground', 'in the background', 'on the left', and 'on the right'.");
+  if (!containsAny(text, ["busy", "calm", "crowded", "organised", "clean", "noisy", "peaceful", "serious", "happy"])) improve.push("Describe the atmosphere. For example: busy, calm, crowded, organised, cheerful, or serious.");
+  if (!containsAny(text, ["i think", "in my opinion", "overall", "this shows", "this reminds me"])) improve.push("Add one opinion at the end. For example: 'I think this visual shows...' or 'This picture reminds me of...'");
+  if (avgSentence > 22) improve.push("Some sentences may be too long. Use shorter and clearer sentences.");
+  if (!containsAny(text, ["because", "while", "whereas", "although", "however"])) improve.push("Use connectors such as 'because', 'while', 'whereas', and 'overall' to make your answer smoother.");
 
-if image and audio:
-    st.markdown("---")
-    st.subheader("3. AI Analysis")
+  if (improve.length === 0) improve.push("Continue practising with different visuals and try to use more specific vocabulary.");
 
-    if st.button("Analyse My Speaking", type="primary"):
-        with st.spinner("Transcribing your speech..."):
-            audio_bytes = audio["bytes"]
-            transcript_text = transcribe_audio(audio_bytes)
+  return improve;
+}
 
-        st.subheader("Your Transcript")
-        st.write(transcript_text)
+function buildVocabularySuggestions(text) {
+  let suggestions = [
+    "people → passengers / customers / visitors / students / workers",
+    "things → objects / facilities / equipment / belongings",
+    "place → location / setting / environment",
+    "busy → crowded / lively / active",
+    "good → suitable / useful / well-organised",
+    "many → several / a number of / a group of",
+    "walking → moving around / heading towards / passing by",
+    "waiting → queuing / standing by / preparing",
+    "background → behind them / at the back / further away",
+    "overall → in general / all in all / to conclude"
+  ];
 
-        with st.spinner("Analysing the visual and your speech..."):
-            image_base64 = encode_image(image)
-            feedback = analyse_visual_and_speech(
-                image_base64,
-                transcript_text,
-                target_level,
-                speaking_time
-            )
+  return suggestions;
+}
 
-        st.subheader("AI Feedback")
-        st.markdown(feedback)
+function buildImprovedStructure() {
+  return `
+<b>Useful Speaking Structure:</b><br><br>
 
-elif image:
-    st.markdown("---")
-    st.info("After recording, click **Analyse My Speaking** to receive feedback.")
+<b>1. Opening</b><br>
+Good morning. This visual shows <i>[place/setting]</i>.<br><br>
+
+<b>2. People</b><br>
+I can see <i>[who]</i>. Some of them are <i>[action]</i>, while others are <i>[action]</i>.<br><br>
+
+<b>3. Objects and Details</b><br>
+In the foreground, there is/are <i>[object]</i>. In the background, I can see <i>[object/place]</i>.<br><br>
+
+<b>4. Atmosphere</b><br>
+The place looks <i>[busy/calm/crowded/organised]</i> because <i>[reason]</i>.<br><br>
+
+<b>5. Opinion</b><br>
+Overall, I think this visual shows <i>[main idea]</i> because <i>[reason]</i>.
+  `;
+}
+
+function buildSentencePatterns() {
+  return `
+<ul>
+<li>This visual shows a scene at <b>[place]</b>.</li>
+<li>In the foreground, I can see <b>[people/object]</b>.</li>
+<li>In the background, there are <b>[objects/details]</b>.</li>
+<li>Some people are <b>[action]</b>, while others are <b>[action]</b>.</li>
+<li>The atmosphere seems <b>[adjective]</b> because <b>[reason]</b>.</li>
+<li>Overall, I think this picture shows <b>[opinion/main idea]</b>.</li>
+</ul>
+  `;
+}
+
+function analyseSpeaking() {
+  const text = document.getElementById("transcript").value.trim();
+  const feedbackDiv = document.getElementById("feedback");
+
+  if (!text) {
+    feedbackDiv.innerHTML = "<div class='feedback'>Please record, type, or paste your response first.</div>";
+    return;
+  }
+
+  const words = countWords(text);
+  const sentences = countSentences(text);
+  const avgSentence = Math.round(words / sentences);
+
+  const content = contentScore(text, words);
+  const vocab = vocabularyScore(text);
+  const organisation = organisationScore(text);
+  const fluency = fluencyScore(text, words);
+  const grammar = grammarScore(text);
+  const total = content + vocab + organisation + fluency + grammar;
+  const band = getBand(total);
+
+  const strengths = buildStrengths(text, words, organisation, vocab);
+  const improve = buildImprovements(text, words, avgSentence);
+  const vocabSuggestions = buildVocabularySuggestions(text);
+
+  feedbackDiv.innerHTML = `
+    <div class="feedback">
+      <div class="score">Overall Score: ${total}/50 — ${band}</div>
+      <br>
+      <b>Content and Visual Description:</b> ${content}/10<br>
+      <b>Organisation:</b> ${organisation}/10<br>
+      <b>Vocabulary:</b> ${vocab}/10<br>
+      <b>Grammar:</b> ${grammar}/10<br>
+      <b>Fluency:</b> ${fluency}/10<br>
+      <br>
+      <b>Word Count:</b> ${words}<br>
+      <b>Estimated Sentences:</b> ${sentences}<br>
+      <b>Average Sentence Length:</b> ${avgSentence} words<br>
+      <br>
+
+      <b>What You Did Well:</b>
+      <ul>${strengths.map(s => "<li>" + s + "</li>").join("")}</ul>
+
+      <b>What To Improve:</b>
+      <ul>${improve.map(s => "<li>" + s + "</li>").join("")}</ul>
+
+      <b>Vocabulary Upgrade:</b>
+      <ul>${vocabSuggestions.map(s => "<li>" + s + "</li>").join("")}</ul>
+
+      <b>Better Sentence Patterns:</b>
+      ${buildSentencePatterns()}
+
+      <div class="blue">
+        ${buildImprovedStructure()}
+      </div>
+
+      <b>Teacher Note:</b>
+      <p>This free version gives feedback based on the student's transcript. It does not analyse the image automatically. 
+      For better feedback, students should mention specific visual details clearly in their speech.</p>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
+""",
+height=1600,
+scrolling=True,
+)
